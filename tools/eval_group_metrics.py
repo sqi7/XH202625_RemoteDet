@@ -7,6 +7,7 @@ from PIL import Image
 
 IMAGE_EXTS = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tif", "*.tiff"]
 DEFAULT_GROUPS = ["ship:0-3", "aircraft:4-23", "vehicle:24"]
+DEFAULT_GROUP_IOU = ["ship:0.5", "aircraft:0.5", "vehicle:0.35"]
 
 
 def parse_class_spec(spec):
@@ -46,6 +47,19 @@ def parse_groups(items):
             class_to_group[cls] = name
 
     return groups, class_to_group
+
+
+def parse_group_iou(items, default_iou):
+    group_iou = {}
+    for item in items:
+        if ":" not in item:
+            raise ValueError(f"invalid group_iou spec: {item}, expected name:iou")
+        name, iou = item.split(":", 1)
+        name = name.strip()
+        if not name:
+            raise ValueError(f"empty group name in group_iou spec: {item}")
+        group_iou[name] = float(iou)
+    return group_iou
 
 
 def yolo_to_xyxy(line, img_w, img_h):
@@ -132,6 +146,12 @@ def main():
     parser.add_argument("--pred_dir", required=True)
     parser.add_argument("--iou", type=float, default=0.5)
     parser.add_argument(
+        "--group_iou",
+        nargs="*",
+        default=DEFAULT_GROUP_IOU,
+        help="per-group IoU specs, e.g. ship:0.5 aircraft:0.5 vehicle:0.35",
+    )
+    parser.add_argument(
         "--groups",
         nargs="*",
         default=DEFAULT_GROUPS,
@@ -144,6 +164,7 @@ def main():
     pred_dir = Path(args.pred_dir)
 
     group_names, class_to_group = parse_groups(args.groups)
+    group_iou = parse_group_iou(args.group_iou, args.iou)
     stats = defaultdict(lambda: {"gt": 0, "pred": 0, "tp": 0, "fp": 0, "fn": 0})
     for name in group_names:
         stats[name]
@@ -181,7 +202,8 @@ def main():
                     best_iou = cur_iou
                     best_idx = i
 
-            if best_iou >= args.iou and best_idx >= 0:
+            match_iou = group_iou.get(pred["group"], args.iou)
+            if best_iou >= match_iou and best_idx >= 0:
                 gts[best_idx]["matched"] = True
                 stats[pred["group"]]["tp"] += 1
             else:
@@ -204,23 +226,12 @@ def main():
     print(f"image_dir: {image_dir}")
     print(f"label_dir: {label_dir}")
     print(f"pred_dir: {pred_dir}")
-    print(f"iou: {args.iou}")
+    print(f"default_iou: {args.iou}")
+    print(f"group_iou: {group_iou}")
     print(f"images: {len(image_paths)}")
     print(f"skipped_images: {skipped_images}")
     print()
-    print("group\tGT\tPred\tTP\tFP\tFN\tRecall\tFDR")
-
-    ordered_groups = group_names + sorted(k for k in stats.keys() if k not in group_names)
-    for group in ordered_groups:
-        d = stats[group]
-        recall = d["tp"] / (d["tp"] + d["fn"] + 1e-6)
-        fdr = d["fp"] / (d["tp"] + d["fp"] + 1e-6)
-        print(
-            f"{group}\t{d['gt']}\t{d['pred']}\t{d['tp']}\t{d['fp']}\t{d['fn']}\t"
-            f"{recall:.4f}\t{fdr:.4f}"
-        )
-
-    print("\nOverall")
+    print("Overall")
     print(f"GT: {total['gt']}")
     print(f"Pred: {total['pred']}")
     print(f"TP: {total['tp']}")
@@ -228,6 +239,20 @@ def main():
     print(f"FN: {total['fn']}")
     print(f"Recall: {overall_recall:.4f}")
     print(f"FDR = FP / (FP + TP): {overall_fdr:.4f}")
+
+    print("\nPer-group")
+    print("group\tIoU\tGT\tPred\tTP\tFP\tFN\tRecall\tFDR")
+
+    ordered_groups = group_names + sorted(k for k in stats.keys() if k not in group_names)
+    for group in ordered_groups:
+        d = stats[group]
+        iou_thr = group_iou.get(group, args.iou)
+        recall = d["tp"] / (d["tp"] + d["fn"] + 1e-6)
+        fdr = d["fp"] / (d["tp"] + d["fp"] + 1e-6)
+        print(
+            f"{group}\t{iou_thr:.2f}\t{d['gt']}\t{d['pred']}\t{d['tp']}\t"
+            f"{d['fp']}\t{d['fn']}\t{recall:.4f}\t{fdr:.4f}"
+        )
 
 
 if __name__ == "__main__":
