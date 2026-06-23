@@ -1,0 +1,14 @@
+official_data/
+public_data/
+weights/
+runs/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.zip
+*.tar
+*.tar.gz
+.DS_Store
+__pycache__/
+*.pyc
