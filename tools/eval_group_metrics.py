@@ -195,7 +195,7 @@ def main():
             for i, gt in enumerate(gts):
                 if gt["matched"]:
                     continue
-                if gt["group"] != pred["group"]:
+                if gt["cls"] != pred["cls"]:
                     continue
                 cur_iou = iou_xyxy(pred["box"], gt["box"])
                 if cur_iou > best_iou:
