@@ -1,14 +1,40 @@
+# data
 official_data/
 public_data/
-weights/
+datasets/
+data/
+
+# training outputs
 runs/
+weights/
+results/
+vis/
+
+# model weights and export files
 *.pt
 *.pth
 *.onnx
 *.engine
+*.torchscript
+
+# archives
 *.zip
 *.tar
 *.tar.gz
-.DS_Store
+*.rar
+*.7z
+
+# logs and temp files
+*.out
+*.log
+file_tree_summary.txt
+file_list_code.txt
+
+# python cache
 __pycache__/
 *.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# system files
+.DS_Store
