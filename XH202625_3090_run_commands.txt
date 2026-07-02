@@ -1,0 +1,342 @@
+XH202625_RemoteDet 换 3090 电脑运行说明
+================================================
+
+说明：
+1. GitHub 只放代码、配置、脚本、文档，不建议上传官方数据集、DIOR 数据集、runs 训练结果和 .pt 权重。
+2. 换 3090 电脑时，代码从 GitHub 拉取；数据集和权重用 scp/rsync/移动硬盘单独传过去。
+3. 3090 电脑主要用于最终速度复测、final_infer_test.py 一键推理测试，以及必要时少量复现实验。
+4. 如果只是测试最终推理，不需要传 DIOR 数据集；只需要传：
+   - 官方 test 图片或 mosaic_10000 模拟大图
+   - 最终 best.pt 权重
+   - GitHub 上的代码仓库
+
+------------------------------------------------------------
+一、当前服务器需要保留/传输的核心文件
+------------------------------------------------------------
+
+项目根目录：
+/root/epfs/XH202625_RemoteDet
+
+1. 代码：通过 GitHub 同步
+建议 GitHub 保留：
+configs/
+docs/
+tools/
+train_*.py
+README.md
+requirements.txt
+.gitignore
+
+2. 最终/候选权重：不要传 GitHub，单独传到 3090
+当前基础主模型：
+runs/yolo/E01_yolov8m_baseline/weights/best.pt
+
+E02 速度保底：
+runs/yolo/E02_yolov8s_speed_b64_nocache/weights/best.pt
+
+E04 过采样：
+runs/yolo/E04_yolov8m_oversample/weights/best.pt
+
+后续如果 E06 更好，还需要传：
+runs/yolo/E06_dior_finetune_xh202625_yolov8m/weights/best.pt
+
+3. 3090 测试所需数据
+如果只是测试 10000x10000 模拟大图速度，传：
+official_data/prepared/mosaic_10000/images/
+
+如果要在 3090 上完整评估模拟大图，还要传：
+official_data/prepared/mosaic_10000/labels/
+
+如果要跑官方 test 提交，只传官方 test 图片目录即可：
+official_data/test/images/
+
+如果要在 3090 上重新训练/验证官方数据，需要传：
+official_data/prepared/xh202625_yolo/
+
+如果要在 3090 上做 DIOR 预训练，需要传：
+public_data/DIOR/yolo/
+
+------------------------------------------------------------
+二、服务器上先打包需要传输的权重和测试数据
+------------------------------------------------------------
+
+在 H800 服务器执行：
+
+conda activate remote_det
+cd ~/epfs/XH202625_RemoteDet
+
+mkdir -p transfer_to_3090/weights
+mkdir -p transfer_to_3090/data
+mkdir -p transfer_to_3090/results
+
+# 1. 复制基础主模型权重
+cp runs/yolo/E01_yolov8m_baseline/weights/best.pt \
+   transfer_to_3090/weights/E01_yolov8m_baseline_best.pt
+
+# 2. 复制速度保底权重
+cp runs/yolo/E02_yolov8s_speed_b64_nocache/weights/best.pt \
+   transfer_to_3090/weights/E02_yolov8s_speed_best.pt
+
+# 3. 如果 E04 权重需要保留，也复制
+cp runs/yolo/E04_yolov8m_oversample/weights/best.pt \
+   transfer_to_3090/weights/E04_yolov8m_oversample_best.pt
+
+# 4. 如果 E06 已训练完成并且效果更好，再复制 E06
+# cp runs/yolo/E06_dior_finetune_xh202625_yolov8m/weights/best.pt \
+#    transfer_to_3090/weights/E06_dior_finetune_best.pt
+
+# 5. 复制 10000x10000 模拟大图，用于 3090 速度测试
+cp -r official_data/prepared/mosaic_10000 \
+      transfer_to_3090/data/
+
+# 6. 复制一键推理测试结果记录，可选
+cp -r results/test_E01_mosaic_balance_submission.json \
+      transfer_to_3090/results/ 2>/dev/null || true
+
+# 7. 打包
+tar -czvf transfer_to_3090_core.tar.gz transfer_to_3090
+
+生成：
+transfer_to_3090_core.tar.gz
+
+------------------------------------------------------------
+三、把代码推到 GitHub
+------------------------------------------------------------
+
+在 H800 服务器执行：
+
+conda activate remote_det
+cd ~/epfs/XH202625_RemoteDet
+
+git status
+git diff train_yolov8m_oversample.py
+
+# 确认无误后提交
+git add configs docs tools train_*.py README.md requirements.txt .gitignore
+git commit -m "complete baseline pipeline and add final inference script"
+
+# 尝试推送
+git push origin main
+
+如果服务器 GitHub 认证失败，可以先不管；
+也可以把代码同步到 Mac，再从 Mac push。
+
+------------------------------------------------------------
+四、把 transfer_to_3090_core.tar.gz 传到 3090 电脑
+------------------------------------------------------------
+
+方法 A：从 3090 电脑拉取服务器文件
+
+在 3090 电脑执行，按实际服务器地址替换：
+
+scp root@服务器IP:/root/epfs/XH202625_RemoteDet/transfer_to_3090_core.tar.gz .
+
+如果服务器路径是 ~/epfs，也可用：
+
+scp root@服务器IP:~/epfs/XH202625_RemoteDet/transfer_to_3090_core.tar.gz .
+
+方法 B：用 rsync，更适合大文件
+
+rsync -avP root@服务器IP:/root/epfs/XH202625_RemoteDet/transfer_to_3090_core.tar.gz .
+
+方法 C：如果不能直连，用移动硬盘/网盘
+把 transfer_to_3090_core.tar.gz 下载到本地，再拷到 3090 电脑。
+
+------------------------------------------------------------
+五、3090 电脑初始化项目
+------------------------------------------------------------
+
+在 3090 电脑执行：
+
+# 1. 克隆代码
+git clone https://github.com/sqi7/XH202625_RemoteDet.git
+cd XH202625_RemoteDet
+
+# 2. 解压权重和测试数据包
+tar -xzvf ../transfer_to_3090_core.tar.gz
+
+# 3. 把权重和数据放回项目对应位置
+mkdir -p runs/yolo/E01_yolov8m_baseline/weights
+mkdir -p runs/yolo/E02_yolov8s_speed_b64_nocache/weights
+mkdir -p runs/yolo/E04_yolov8m_oversample/weights
+mkdir -p official_data/prepared
+
+cp transfer_to_3090/weights/E01_yolov8m_baseline_best.pt \
+   runs/yolo/E01_yolov8m_baseline/weights/best.pt
+
+cp transfer_to_3090/weights/E02_yolov8s_speed_best.pt \
+   runs/yolo/E02_yolov8s_speed_b64_nocache/weights/best.pt
+
+cp transfer_to_3090/weights/E04_yolov8m_oversample_best.pt \
+   runs/yolo/E04_yolov8m_oversample/weights/best.pt
+
+cp -r transfer_to_3090/data/mosaic_10000 \
+      official_data/prepared/
+
+# 如果有 E06 权重，手动建立目录并复制：
+# mkdir -p runs/yolo/E06_dior_finetune_xh202625_yolov8m/weights
+# cp transfer_to_3090/weights/E06_dior_finetune_best.pt \
+#    runs/yolo/E06_dior_finetune_xh202625_yolov8m/weights/best.pt
+
+------------------------------------------------------------
+六、3090 电脑配置 conda 环境
+------------------------------------------------------------
+
+建议环境名仍然叫 remote_det。
+
+conda create -n remote_det python=3.10 -y
+conda activate remote_det
+
+# 安装 PyTorch。下面命令按 CUDA 12.1 举例，适合很多 3090 环境。
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# 安装项目依赖
+pip install ultralytics==8.4.67 opencv-python pillow tqdm pyyaml numpy pandas
+
+# 检查 GPU
+python - <<'PY'
+import torch
+print("torch:", torch.__version__)
+print("cuda available:", torch.cuda.is_available())
+print("gpu:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
+PY
+
+------------------------------------------------------------
+七、3090 上测试基础版 final_infer_test.py
+------------------------------------------------------------
+
+进入项目目录：
+
+conda activate remote_det
+cd XH202625_RemoteDet
+
+运行基础主策略：
+
+python tools/final_infer_test.py \
+  --model runs/yolo/E01_yolov8m_baseline/weights/best.pt \
+  --test_image_dir official_data/prepared/mosaic_10000/images \
+  --out_root runs/final_test/3090_E01_mosaic_balance \
+  --submit_json results/3090_E01_mosaic_balance_submission.json \
+  --default_thr 0.25 \
+  --class_thr 0:0.10 1:0.10 24:0.12 \
+  --category_id_offset 0 \
+  --device 0
+
+重点看输出：
+
+avg_time_per_image
+max_time_per_image
+speed_summary
+
+如果 max_time_per_image < 20s，说明满足比赛单幅 10000x10000 推理时间要求。
+
+------------------------------------------------------------
+八、3090 上测试大图保守策略
+------------------------------------------------------------
+
+如果担心大图虚警偏高，可以测保守策略：
+
+python tools/final_infer_test.py \
+  --model runs/yolo/E01_yolov8m_baseline/weights/best.pt \
+  --test_image_dir official_data/prepared/mosaic_10000/images \
+  --out_root runs/final_test/3090_E01_mosaic_more_conservative \
+  --submit_json results/3090_E01_mosaic_more_conservative_submission.json \
+  --default_thr 0.45 \
+  --class_thr 0:0.20 1:0.20 24:0.30 \
+  --category_id_offset 0 \
+  --device 0
+
+------------------------------------------------------------
+九、3090 上评估模拟大图结果，可选
+------------------------------------------------------------
+
+如果也传了 labels，可以评估：
+
+python tools/eval_group_metrics.py \
+  --image_dir official_data/prepared/mosaic_10000/images \
+  --label_dir official_data/prepared/mosaic_10000/labels \
+  --pred_dir runs/final_test/3090_E01_mosaic_balance/submit_filtered \
+  --groups ship:0-3 aircraft:4-23 vehicle:24 \
+  --group_iou ship:0.5 aircraft:0.5 vehicle:0.35
+
+保守策略评估：
+
+python tools/eval_group_metrics.py \
+  --image_dir official_data/prepared/mosaic_10000/images \
+  --label_dir official_data/prepared/mosaic_10000/labels \
+  --pred_dir runs/final_test/3090_E01_mosaic_more_conservative/submit_filtered \
+  --groups ship:0-3 aircraft:4-23 vehicle:24 \
+  --group_iou ship:0.5 aircraft:0.5 vehicle:0.35
+
+------------------------------------------------------------
+十、如果要在 3090 上跑官方 test
+------------------------------------------------------------
+
+把官方 test 图片放到：
+
+official_data/test/images/
+
+然后运行：
+
+python tools/final_infer_test.py \
+  --model runs/yolo/E01_yolov8m_baseline/weights/best.pt \
+  --test_image_dir official_data/test/images \
+  --out_root runs/final_test/FINAL_E01_balance \
+  --submit_json results/FINAL_E01_balance_submission.json \
+  --default_thr 0.25 \
+  --class_thr 0:0.10 1:0.10 24:0.12 \
+  --category_id_offset 0 \
+  --device 0
+
+如果最终模型换成 E06，只改 model 路径：
+
+--model runs/yolo/E06_dior_finetune_xh202625_yolov8m/weights/best.pt
+
+------------------------------------------------------------
+十一、如果要在 3090 上继续训练
+------------------------------------------------------------
+
+不建议一开始就在 3090 上重训全部实验。
+如果必须训练，需要额外传：
+
+1. 官方训练数据：
+official_data/prepared/xh202625_yolo/
+
+2. DIOR 数据：
+public_data/DIOR/yolo/
+
+然后在 3090 上运行：
+
+conda activate remote_det
+cd XH202625_RemoteDet
+
+# 官方数据训练/微调
+python train_yolov8m_baseline.py
+
+# DIOR 预训练
+python train_yolov8m_dior_pretrain.py
+
+# DIOR 到官方数据微调
+python train_yolov8m_dior_finetune_xh.py
+
+注意：
+3090 显存一般 24GB，比 H800 小很多。
+如果爆显存，调小 batch：
+- yolov8m imgsz=640 batch=8 或 16
+- imgsz=1024 batch=4 或 8
+
+------------------------------------------------------------
+十二、最终提交前检查清单
+------------------------------------------------------------
+
+1. 最终 best.pt 路径正确
+2. test_image_dir 是官方 test 图片目录
+3. category_id_offset 符合官方要求
+   - 如果官方类别编号是 0-24，用 0
+   - 如果官方类别编号是 1-25，用 1
+4. results/xxx_submission.json 已生成
+5. invalid_boxes = 0
+6. speed_summary.json 存在
+7. max_time_per_image < 20s
+8. 不要把官方数据集、DIOR 数据集、权重文件上传到公开 GitHub
+9. GitHub 只保存代码、配置、脚本和文档
