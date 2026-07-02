@@ -152,10 +152,10 @@ if __name__ == "__main__":
 # cd ~/epfs/XH202625_RemoteDet
 
 # python tools/final_infer_test.py \
-#   --model runs/yolo/E04_yolov8m_oversample/weights/best.pt \
-#   --test_image_dir official_data/test/images \
-#   --out_root runs/final_test/E04_balance \
-#   --submit_json results/E04_balance_submission.json \
+#   --model runs/yolo/E01_yolov8m_baseline/weights/best.pt \                #--model 最终best.pt路径
+#   --test_image_dir official_data/prepared/mosaic_10000/images \           #--test_image_dir 官方test图片路径
+#   --out_root runs/final_test/test_E01_mosaic_balance \
+#   --submit_json results/test_E01_mosaic_balance_submission.json \
 #   --default_thr 0.25 \
 #   --class_thr 0:0.10 1:0.10 24:0.12 \
 #   --category_id_offset 0 \

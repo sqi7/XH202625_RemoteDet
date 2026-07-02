@@ -1,34 +1,30 @@
 # data
 official_data/
 public_data/
-datasets/
 data/
 
-# training outputs
+# outputs
 runs/
-weights/
 results/
 vis/
+_archive/
+transfer_to_3090/
 
-# model weights and export files
+# weights and large files
+weights/
 *.pt
 *.pth
 *.onnx
 *.engine
 *.torchscript
-
-# archives
-*.zip
-*.tar
 *.tar.gz
+*.zip
 *.rar
 *.7z
 
-# logs and temp files
+# logs
 *.out
 *.log
-file_tree_summary.txt
-file_list_code.txt
 
 # python cache
 __pycache__/
@@ -38,3 +34,7 @@ __pycache__/
 
 # system files
 .DS_Store
+
+# temporary summaries
+file_tree_summary.txt
+dir_tree.txt
